@@ -245,24 +245,47 @@ function createMessageParticle(fromPos, toPos) {
     animateParticle();
 }
 
-function createConnectionLine(fromPos, toPos, isUnread) {
+function createConnectionLine(fromPos, toPos) {
+    const startPos = new THREE.Vector3(fromPos.x, fromPos.y + 5, fromPos.z);
+    const endPos = new THREE.Vector3(toPos.x, toPos.y + 5, toPos.z);
+    
     const material = new THREE.LineBasicMaterial({
-        color: isUnread ? 0xff6b6b : 0x4CAF50,
-        opacity: isUnread ? 0.8 : 0.3,
+        color: 0xff6b6b,
+        opacity: 0.8,
         transparent: true,
-        linewidth: isUnread ? 3 : 1
+        linewidth: 3
     });
     
-    const points = [
-        new THREE.Vector3(fromPos.x, fromPos.y + 5, fromPos.z),
-        new THREE.Vector3(toPos.x, toPos.y + 5, toPos.z)
-    ];
+    const points = [startPos, endPos];
     
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const line = new THREE.Line(geometry, material);
     
     scene.add(line);
     connectionLines.push(line);
+    
+    // Add arrowhead for directionality
+    const direction = new THREE.Vector3().subVectors(endPos, startPos).normalize();
+    const arrowPos = endPos.clone().sub(direction.clone().multiplyScalar(5));
+    
+    const arrowGeometry = new THREE.ConeGeometry(0.5, 1.5, 8);
+    const arrowMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff6b6b,
+        emissive: 0xff6b6b,
+        emissiveIntensity: 0.3
+    });
+    const arrowhead = new THREE.Mesh(arrowGeometry, arrowMaterial);
+    
+    arrowhead.position.copy(arrowPos);
+    
+    // Orient arrow to point along the line
+    const up = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromUnitVectors(up, direction);
+    arrowhead.setRotationFromQuaternion(quaternion);
+    
+    scene.add(arrowhead);
+    connectionLines.push(arrowhead);
     
     // Send particle
     setTimeout(() => {
@@ -307,16 +330,15 @@ function updateVillage() {
         }
     });
     
-    // Create connections based on messages
-    messages.forEach(msg => {
+    // Create connections for unread messages only
+    allMessages.forEach(msg => {
         const fromHouse = agentMeshes.get(msg.sender.toLowerCase());
         const toHouse = agentMeshes.get(msg.recipient.toLowerCase());
         
-        if (fromHouse && toHouse) {
+        if (fromHouse && toHouse && !msg.read) {
             createConnectionLine(
                 fromHouse.position,
-                toHouse.position,
-                !msg.read && msg.recipient.toLowerCase() === config.user.toLowerCase()
+                toHouse.position
             );
         }
     });
@@ -387,7 +409,7 @@ function updateUI() {
     // Update recipient select (send panel) - only from coworkers.db
     const select = document.getElementById('recipient-select');
     const currentVal = select.value;
-    select.innerHTML = '<option value="">To: Select agent...</option>' +
+    select.innerHTML = '<option value="">Coworker...</option>' +
         recipients.sort().map(r => 
             `<option value="${r}" ${r === currentVal ? 'selected' : ''}>${r}</option>`
         ).join('');
@@ -408,7 +430,7 @@ function updateUI() {
                     <span class="message-sender">${msg.sender} → ${msg.recipient}</span>
                     <span class="message-time">${new Date(msg.timestamp).toLocaleString()}</span>
                 </div>
-                <div class="message-text">${msg.message}</div>
+                <div class="message-text">${marked.parse(msg.message)}</div>
             </div>
         `).join('');
         
@@ -433,6 +455,12 @@ function updateUI() {
                 
                 // Mark as read
                 markAsRead(msgId);
+                
+                // Expand send panel if collapsed
+                const sendPanel = document.getElementById('send-panel');
+                if (sendPanel && sendPanel.classList.contains('collapsed')) {
+                    toggleSendPanel();
+                }
                 
                 // Focus the message input for typing
                 const messageInput = document.getElementById('message-input');
@@ -621,7 +649,7 @@ function updateHouseDialogContent() {
                     <span class="message-sender">${msg.sender} → ${msg.recipient}</span>
                     <span class="message-time">${new Date(msg.timestamp).toLocaleString()}</span>
                 </div>
-                <div class="message-text">${msg.message}</div>
+                <div class="message-text">${marked.parse(msg.message)}</div>
             </div>
         `).join('');
     }

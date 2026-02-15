@@ -208,9 +208,8 @@
         .message-card {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 12px;
-            padding: 12px;
+            padding: 12px 12px 12px 20px;
             margin-bottom: 10px;
-            border-left: 3px solid #4CAF50;
             transition: all 0.3s ease;
             cursor: pointer;
         }
@@ -220,7 +219,7 @@
         }
         
         .message-card.unread {
-            border-left-color: #ff6b6b;
+            border-left: 3px solid #ff6b6b;
             background: rgba(255, 107, 107, 0.15);
         }
         
@@ -246,6 +245,65 @@
             color: rgba(255, 255, 255, 0.9);
             font-size: 0.85rem;
             line-height: 1.4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .message-text h1, .message-text h2, .message-text h3 {
+            margin: 8px 0;
+            color: white;
+        }
+        
+        .message-text h1 { font-size: 1.2rem; }
+        .message-text h2 { font-size: 1.1rem; }
+        .message-text h3 { font-size: 1rem; }
+        
+        .message-text strong {
+            color: white;
+            font-weight: 700;
+        }
+        
+        .message-text code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.8rem;
+        }
+        
+        .message-text pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+        
+        .message-text pre code {
+            background: transparent;
+            padding: 0;
+        }
+        
+        .message-text hr {
+            border: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            margin: 12px 0;
+        }
+        
+        .message-text blockquote {
+            border-left: 3px solid rgba(255, 255, 255, 0.4);
+            margin: 8px 0;
+            padding-left: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .message-text ul, .message-text ol {
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+        
+        .message-text li {
+            margin: 4px 0;
         }
         
         /* Toggle Messages Button */
@@ -378,13 +436,12 @@
         .house-dialog-body .message-card {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 12px;
-            padding: 12px;
+            padding: 12px 12px 12px 20px;
             margin-bottom: 10px;
-            border-left: 3px solid #4CAF50;
         }
         
         .house-dialog-body .message-card.unread {
-            border-left-color: #ff6b6b;
+            border-left: 3px solid #ff6b6b;
             background: rgba(255, 107, 107, 0.15);
         }
         
@@ -442,6 +499,8 @@
             display: none;
         }
     </style>
+    <!-- Markdown parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div id="canvas-container"></div>

@@ -92,16 +92,15 @@ app.get('/api/messages/sent', (req, res) => {
   }
 });
 
-// API: Get ALL messages involving the user (for house dialogs)
+// API: Get ALL messages between ALL agents
 app.get('/api/messages/all', (req, res) => {
   try {
     if (!db) throw new Error('Database not connected');
     const stmt = db.prepare(`
       SELECT * FROM messages 
-      WHERE recipient = ? OR sender = ?
       ORDER BY timestamp DESC
     `);
-    res.json(stmt.all(user!.toLowerCase(), user!.toLowerCase()));
+    res.json(stmt.all());
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
