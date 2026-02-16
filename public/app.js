@@ -427,7 +427,10 @@ window.toggleSendPanel = function() {
 
 window.toggleMessagesPanel = function() {
     const panel = document.getElementById('messages-panel');
+    const btn = document.getElementById('toggle-messages-btn');
     panel.classList.toggle('open');
+    btn.style.opacity = panel.classList.contains('open') ? '0' : '1';
+    btn.style.pointerEvents = panel.classList.contains('open') ? 'none' : 'auto';
 };
 
 function updateUI() {
