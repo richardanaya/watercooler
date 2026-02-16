@@ -1212,7 +1212,9 @@ function updateUI() {
     // Update recipient select (send panel) - only from coworkers.db
     const select = document.getElementById('recipient-select');
     const currentVal = select.value;
+    const everyoneOption = recipients.length > 0 ? '<option value="@everyone" style="font-weight: bold; color: #5EEAD4;">@everyone (broadcast to all)</option>' : '';
     select.innerHTML = '<option value="">Coworker...</option>' +
+        everyoneOption +
         recipients.sort().map(r => 
             `<option value="${r}" ${r === currentVal ? 'selected' : ''}>${r}</option>`
         ).join('');
@@ -1227,15 +1229,7 @@ function updateUI() {
             </div>
         `;
     } else {
-        messagesDiv.innerHTML = messages.slice(0, 20).map(msg => `
-            <div class="message-card ${msg.read ? '' : 'unread'}" data-id="${msg.id}" data-sender="${msg.sender}" data-recipient="${msg.recipient}">
-                <div class="message-header">
-                    <span class="message-sender">${msg.sender} → ${msg.recipient}</span>
-                    <span class="message-time">${new Date(msg.timestamp).toLocaleString()}</span>
-                </div>
-                <div class="message-text">${marked.parse(msg.message)}</div>
-            </div>
-        `).join('');
+        messagesDiv.innerHTML = messages.slice(0, 20).map(msg => renderMessageCard(msg, true)).join('');
         
         // Add click handlers for all messages (clicking marks as read and sets recipient for reply)
         messagesDiv.querySelectorAll('.message-card').forEach(el => {
@@ -1311,25 +1305,49 @@ async function sendMessage() {
     }
     
     try {
-        const response = await fetch('/api/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to, from: config.user, message })
-        });
+        let sendPromises;
         
-        if (response.ok) {
+        if (to === '@everyone') {
+            // Send to all recipients individually
+            sendPromises = recipients.map(recipient => 
+                fetch('/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to: recipient, from: config.user, message })
+                })
+            );
+        } else {
+            // Send to single recipient
+            sendPromises = [fetch('/api/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to, from: config.user, message })
+            })];
+        }
+        
+        const responses = await Promise.all(sendPromises);
+        const allSuccessful = responses.every(r => r.ok);
+        
+        if (allSuccessful) {
             // Clear input
             document.getElementById('message-input').value = '';
             
             // Show toast
             const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            if (toastMsg && to === '@everyone') {
+                toastMsg.textContent = `Message broadcast to ${recipients.length} coworkers!`;
+            }
             toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                if (toastMsg) toastMsg.textContent = 'Message sent!';
+            }, 3000);
             
             // Reload data
             loadData();
         } else {
-            alert('Failed to send message');
+            alert('Failed to send message to some recipients');
         }
     } catch (err) {
         console.error('Error sending:', err);
@@ -1496,15 +1514,7 @@ function updateDeskDialogContent() {
             </div>
         `;
     } else {
-        content.innerHTML = filteredMessages.map(msg => `
-            <div class="message-card ${msg.read ? '' : 'unread'}" style="margin-bottom: 12px;">
-                <div class="message-header">
-                    <span class="message-sender">${msg.sender} → ${msg.recipient}</span>
-                    <span class="message-time">${new Date(msg.timestamp).toLocaleString()}</span>
-                </div>
-                <div class="message-text">${marked.parse(msg.message)}</div>
-            </div>
-        `).join('');
+        content.innerHTML = filteredMessages.map(msg => renderMessageCard(msg, true)).join('');
     }
 }
 
@@ -1589,6 +1599,123 @@ function updateDeskLabels() {
             sprite.scale.set(7, toolName ? 2.2 : 1.8, 1);
         }
     });
+}
+
+// Parse markdown frontmatter from message text
+function parseFrontmatter(text) {
+    const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
+    const match = text.match(frontmatterRegex);
+    
+    if (!match) {
+        return { content: text, frontmatter: null };
+    }
+    
+    const frontmatterText = match[1];
+    const content = text.slice(match[0].length).trim();
+    
+    // Simple YAML-like parsing
+    const frontmatter = {};
+    const lines = frontmatterText.split('\n');
+    
+    for (const line of lines) {
+        const colonIndex = line.indexOf(':');
+        if (colonIndex > 0) {
+            const key = line.slice(0, colonIndex).trim();
+            let value = line.slice(colonIndex + 1).trim();
+            
+            // Handle arrays: choices: ["option1", "option2"]
+            if (value.startsWith('[') && value.endsWith(']')) {
+                try {
+                    value = JSON.parse(value.replace(/'/g, '"'));
+                } catch {
+                    // Fallback: parse as comma-separated
+                    value = value.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+                }
+            } else if (value.startsWith('- ')) {
+                // YAML array format with dashes - collect all consecutive dash items
+                // This is handled below by checking the whole frontmatter
+            } else {
+                // Remove quotes if present
+                value = value.replace(/^["']|["']$/g, '');
+            }
+            
+            frontmatter[key] = value;
+        }
+    }
+    
+    // Handle YAML array format: choices:\n  - option1\n  - option2
+    const choicesMatch = frontmatterText.match(/choices:\s*\n((?:\s*-\s*[^\n]+\n?)+)/);
+    if (choicesMatch) {
+        const choicesLines = choicesMatch[1].trim().split('\n');
+        frontmatter.choices = choicesLines
+            .map(line => line.replace(/^\s*-\s*/, '').trim())
+            .filter(line => line)
+            .map(choice => choice.replace(/^["']|["']$/g, ''));
+    }
+    
+    return { content, frontmatter };
+}
+
+// Send a quick response from a choice button
+window.sendQuickResponse = async function(to, message, messageId) {
+    try {
+        const response = await fetch('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to, from: config.user, message })
+        });
+        
+        if (response.ok) {
+            // Mark the original message as read if messageId is provided
+            if (messageId) {
+                await fetch(`/api/messages/${messageId}/read`, { method: 'POST' });
+            }
+            
+            // Show toast
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            if (toastMsg) toastMsg.textContent = 'Quick reply sent!';
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+                if (toastMsg) toastMsg.textContent = 'Message sent!';
+            }, 2000);
+            
+            // Reload data
+            loadData();
+        } else {
+            console.error('Failed to send quick response');
+        }
+    } catch (err) {
+        console.error('Error sending quick response:', err);
+    }
+}
+
+// Render a message card HTML with optional choice buttons
+function renderMessageCard(msg, showChoices = true) {
+    const { content, frontmatter } = parseFrontmatter(msg.message);
+    const choices = frontmatter?.choices;
+    const showChoicesButtons = showChoices && Array.isArray(choices) && choices.length > 0;
+    const replyTo = msg.recipient.toLowerCase() === config.user.toLowerCase() ? msg.sender : msg.recipient;
+    
+    return `
+        <div class="message-card ${msg.read ? '' : 'unread'}" data-id="${msg.id}" data-sender="${msg.sender}" data-recipient="${msg.recipient}">
+            <div class="message-header">
+                <span class="message-sender">${msg.sender} → ${msg.recipient}</span>
+                <span class="message-time">${new Date(msg.timestamp).toLocaleString()}</span>
+            </div>
+            <div class="message-text">${marked.parse(content)}</div>
+            ${showChoicesButtons ? `
+                <div class="message-choices">
+                    ${choices.map((choice) => `
+                        <button class="choice-btn" onclick="sendQuickResponse('${replyTo}', '${choice.replace(/'/g, "\\'")}', ${msg.id})">
+                            ${choice}
+                        </button>
+                    `).join('')}
+                </div>
+            ` : ''}
+        </div>
+    `;
 }
 
 // Event listeners

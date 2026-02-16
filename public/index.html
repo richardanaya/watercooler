@@ -592,6 +592,18 @@
             .empty-state p {
                 font-size: 1rem;
             }
+            
+            /* Choice buttons on mobile */
+            .message-choices {
+                gap: 6px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            
+            .choice-btn {
+                padding: 10px 14px;
+                font-size: 0.9rem;
+            }
         }
         
         /* Extra small screens */
@@ -776,6 +788,49 @@
         .tab-badge[style*="display: none"] {
             display: none;
         }
+        
+        /* Message choice buttons */
+        .message-choices {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .choice-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+        
+        .choice-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+            background: linear-gradient(135deg, #7b8ff0 0%, #8b5eb5 100%);
+        }
+        
+        .choice-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+        }
+        
+        /* Darker variant for unread messages */
+        .message-card.unread .choice-btn {
+            background: linear-gradient(135deg, #4fd1c5 0%, #667eea 100%);
+        }
+        
+        .message-card.unread .choice-btn:hover {
+            background: linear-gradient(135deg, #5ee4d8 0%, #7b8ff0 100%);
+        }
     </style>
     <!-- Markdown parser -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -841,7 +896,7 @@
         </div>
     </div>
     
-    <div class="toast" id="toast">Message sent!</div>
+    <div class="toast" id="toast"><span id="toast-message">Message sent!</span></div>
 
     <script type="importmap">
         {
