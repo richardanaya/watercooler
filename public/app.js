@@ -370,9 +370,14 @@ async function loadData() {
         ]);
         
         config = await configRes.json();
-        messages = await messagesRes.json();
-        recipients = await coworkersRes.json(); // Use coworkers endpoint
-        allMessages = await allMessagesRes.json();
+        const messagesData = await messagesRes.json();
+        const recipientsData = await coworkersRes.json();
+        const allMessagesData = await allMessagesRes.json();
+        
+        // Validate responses are arrays (not error objects)
+        messages = Array.isArray(messagesData) ? messagesData : [];
+        recipients = Array.isArray(recipientsData) ? recipientsData : [];
+        allMessages = Array.isArray(allMessagesData) ? allMessagesData : [];
         
         updateUI();
         updateVillage();

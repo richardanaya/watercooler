@@ -58,6 +58,20 @@ if (coworkerPath) {
   }
 }
 
+// Helper: Check if table exists
+function tableExists(database: Database.Database | null, tableName: string): boolean {
+  if (!database) return false;
+  try {
+    const stmt = database.prepare(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name=?
+    `);
+    return !!stmt.get(tableName);
+  } catch {
+    return false;
+  }
+}
+
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -66,6 +80,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/messages', (req, res) => {
   try {
     if (!db) throw new Error('Database not connected');
+    if (!tableExists(db, 'messages')) {
+      res.json([]);
+      return;
+    }
     const stmt = db.prepare(`
       SELECT * FROM messages 
       WHERE recipient = ? 
@@ -81,6 +99,10 @@ app.get('/api/messages', (req, res) => {
 app.get('/api/messages/sent', (req, res) => {
   try {
     if (!db) throw new Error('Database not connected');
+    if (!tableExists(db, 'messages')) {
+      res.json([]);
+      return;
+    }
     const stmt = db.prepare(`
       SELECT * FROM messages 
       WHERE sender = ? 
@@ -96,6 +118,10 @@ app.get('/api/messages/sent', (req, res) => {
 app.get('/api/messages/all', (req, res) => {
   try {
     if (!db) throw new Error('Database not connected');
+    if (!tableExists(db, 'messages')) {
+      res.json([]);
+      return;
+    }
     const stmt = db.prepare(`
       SELECT * FROM messages 
       ORDER BY timestamp DESC
@@ -125,12 +151,7 @@ app.get('/api/coworkers', (req, res) => {
       console.log('No coworkerDb connection available');
     }
     
-    // Add from message history
-    const recipientRows = db.prepare('SELECT DISTINCT recipient FROM messages').all() as Array<{recipient: string}>;
-    recipientRows.forEach(row => allCoworkers.add(row.recipient.toLowerCase()));
-    
-    const senderRows = db.prepare('SELECT DISTINCT sender FROM messages').all() as Array<{sender: string}>;
-    senderRows.forEach(row => allCoworkers.add(row.sender.toLowerCase()));
+    // Note: Messages table is in a different database, not queried here
     
     // Remove current user
     allCoworkers.delete(user!.toLowerCase());
@@ -147,6 +168,10 @@ app.get('/api/coworkers', (req, res) => {
 app.get('/api/recipients', (req, res) => {
   try {
     if (!db) throw new Error('Database not connected');
+    if (!tableExists(db, 'messages')) {
+      res.json([]);
+      return;
+    }
     const stmt = db.prepare(`SELECT DISTINCT recipient FROM messages`);
     res.json(stmt.all().map((r: any) => r.recipient));
   } catch (err: any) {
@@ -158,6 +183,21 @@ app.get('/api/recipients', (req, res) => {
 app.post('/api/send', (req, res) => {
   try {
     if (!db) throw new Error('Database not connected');
+    
+    // Auto-create messages table if it doesn't exist
+    if (!tableExists(db, 'messages')) {
+      db.exec(`
+        CREATE TABLE messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          recipient TEXT NOT NULL,
+          sender TEXT NOT NULL,
+          message TEXT NOT NULL,
+          timestamp INTEGER NOT NULL,
+          read INTEGER DEFAULT 0
+        )
+      `);
+    }
+    
     const { to, message } = req.body;
     const stmt = db.prepare(`
       INSERT INTO messages (recipient, sender, message, timestamp, read)
@@ -174,6 +214,10 @@ app.post('/api/send', (req, res) => {
 app.post('/api/messages/:id/read', (req, res) => {
   try {
     if (!db) throw new Error('Database not connected');
+    if (!tableExists(db, 'messages')) {
+      res.status(404).json({ error: 'Messages table not found' });
+      return;
+    }
     db.prepare('UPDATE messages SET read = 1 WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
