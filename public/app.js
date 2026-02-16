@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // State
 let config = { user: '', mailbox: '', avatar: null };
@@ -36,6 +39,8 @@ let holoSphere = null;
 let holoParticles = null;
 let glowLights = [];
 let floatingParticles = [];
+let composer = null;
+let waterMesh = null;
 
 // Initialize Three.js
 function init() {
@@ -99,8 +104,26 @@ function init() {
     const hemiLight = new THREE.HemisphereLight(0x4fd1c5, 0x1a3a3a, 0.4);
     scene.add(hemiLight);
     
+    // Additional accent lights for bloom effect
+    // Center glow from holographic sphere area
+    const centerGlow = new THREE.PointLight(0x4fd1c5, 0.6, 50);
+    centerGlow.position.set(0, PLATFORM_HEIGHT + 15, 0);
+    scene.add(centerGlow);
+    
+    // Edge accent lights
+    const edgeLight1 = new THREE.PointLight(0x88ffdd, 0.4, 30);
+    edgeLight1.position.set(30, PLATFORM_HEIGHT + 10, 30);
+    scene.add(edgeLight1);
+    
+    const edgeLight2 = new THREE.PointLight(0x88ffdd, 0.4, 30);
+    edgeLight2.position.set(-30, PLATFORM_HEIGHT + 10, -30);
+    scene.add(edgeLight2);
+    
     // === Platform ===
     createPlatform();
+    
+    // === Reflective Water Surface ===
+    createReflectiveWater();
     
     // === Glass Walls ===
     createGlassWalls();
@@ -116,6 +139,9 @@ function init() {
     
     // === Floating Particles ===
     createFloatingParticles();
+    
+    // === Background Stars ===
+    createBackgroundStars();
     
     window.addEventListener('resize', onWindowResize);
     
@@ -135,6 +161,9 @@ function init() {
     window.addEventListener('orientationchange', () => {
         setTimeout(onWindowResize, 100);
     });
+    
+    // === Post Processing ===
+    setupPostProcessing();
     
     animate();
 }
@@ -196,6 +225,56 @@ function createPlatform() {
     ground.position.y = -0.1;
     ground.receiveShadow = true;
     scene.add(ground);
+}
+
+function createReflectiveWater() {
+    // Reflective water surface below the platform
+    const waterSize = PLATFORM_SIZE * 1.5;
+    const waterGeo = new THREE.PlaneGeometry(waterSize, waterSize, 64, 64);
+    
+    // Create a custom shader material for reflective water effect
+    const waterMat = new THREE.MeshPhysicalMaterial({
+        color: 0x0d3333,
+        metalness: 0.9,
+        roughness: 0.1,
+        transparent: true,
+        opacity: 0.85,
+        transmission: 0.3,
+        thickness: 0.5,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.1,
+        side: THREE.DoubleSide
+    });
+    
+    waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    waterMesh.rotation.x = -Math.PI / 2;
+    waterMesh.position.y = -0.5;
+    waterMesh.receiveShadow = true;
+    scene.add(waterMesh);
+    
+    // Add subtle ripple effect using vertex displacement
+    const positions = waterMesh.geometry.attributes.position;
+    const initialPositions = positions.array.slice();
+    waterMesh.userData.initialPositions = initialPositions;
+    waterMesh.userData.ripplePhase = 0;
+}
+
+function setupPostProcessing() {
+    // Setup EffectComposer for bloom
+    composer = new EffectComposer(renderer);
+    
+    // Add render pass
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    
+    // Add bloom pass
+    const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        0.8,  // strength
+        0.4,  // radius
+        0.75  // threshold
+    );
+    composer.addPass(bloomPass);
 }
 
 function createGlassWalls() {
@@ -489,6 +568,48 @@ function createFloatingParticles() {
     const particles = new THREE.Points(geometry, material);
     scene.add(particles);
     floatingParticles.push(particles);
+}
+
+function createBackgroundStars() {
+    // Distant stars/sparkles in the background
+    const starCount = 200;
+    const positions = new Float32Array(starCount * 3);
+    const sizes = new Float32Array(starCount);
+    
+    for (let i = 0; i < starCount; i++) {
+        // Place stars far outside the platform
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const radius = 100 + Math.random() * 150;
+        
+        positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = 20 + Math.random() * 100;
+        positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        sizes[i] = 0.5 + Math.random() * 1.5;
+    }
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    
+    const material = new THREE.PointsMaterial({
+        color: 0xaaddff,
+        size: 1.0,
+        transparent: true,
+        opacity: 0.6,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true
+    });
+    
+    const stars = new THREE.Points(geometry, material);
+    scene.add(stars);
+    
+    // Animate stars with twinkle effect
+    stars.userData.twinklePhase = Math.random() * Math.PI * 2;
+    
+    // Add to floatingParticles for animation
+    floatingParticles.push(stars);
 }
 
 function createAgentDesk(name, position, toolName = null) {
@@ -946,12 +1067,23 @@ function animate() {
     }
     
     // Animate floating particles
-    floatingParticles.forEach(particles => {
+    floatingParticles.forEach((particles, index) => {
         const positions = particles.geometry.attributes.position.array;
-        for (let i = 0; i < positions.length; i += 3) {
-            positions[i + 1] += Math.sin(time + positions[i] * 0.1) * 0.003;
+        
+        if (particles.userData.twinklePhase !== undefined) {
+            // Star twinkling effect
+            const twinkle = Math.sin(time * 2 + particles.userData.twinklePhase) * 0.3 + 0.7;
+            particles.material.opacity = 0.4 + twinkle * 0.4;
+            
+            // Slowly rotate stars
+            particles.rotation.y = time * 0.02;
+        } else {
+            // Regular floating particles
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i + 1] += Math.sin(time + positions[i] * 0.1) * 0.003;
+            }
+            particles.geometry.attributes.position.needsUpdate = true;
         }
-        particles.geometry.attributes.position.needsUpdate = true;
     });
     
     // Subtle glow pulse on lamps
@@ -960,8 +1092,34 @@ function animate() {
         item.light.intensity = item.baseIntensity * pulse;
     });
     
+    // Animate water ripples
+    if (waterMesh && waterMesh.userData.initialPositions) {
+        const positions = waterMesh.geometry.attributes.position;
+        const initialPositions = waterMesh.userData.initialPositions;
+        
+        for (let i = 0; i < positions.count; i++) {
+            const x = initialPositions[i * 3];
+            const y = initialPositions[i * 3 + 1];
+            
+            // Create gentle ripple effect
+            const distance = Math.sqrt(x * x + y * y);
+            const wave1 = Math.sin(distance * 0.3 - time * 0.8) * 0.15;
+            const wave2 = Math.sin(x * 0.2 + time * 0.5) * 0.1;
+            const wave3 = Math.cos(y * 0.15 + time * 0.3) * 0.08;
+            
+            positions.setZ(i, wave1 + wave2 + wave3);
+        }
+        positions.needsUpdate = true;
+    }
+    
     controls.update();
-    renderer.render(scene, camera);
+    
+    // Use composer for bloom effect if available, otherwise standard renderer
+    if (composer) {
+        composer.render();
+    } else {
+        renderer.render(scene, camera);
+    }
 }
 
 function onWindowResize() {
@@ -970,6 +1128,11 @@ function onWindowResize() {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
+    
+    // Resize composer for bloom effect
+    if (composer) {
+        composer.setSize(width, height);
+    }
     
     if (width < 768) {
         camera.position.y = Math.max(camera.position.y, 40);
