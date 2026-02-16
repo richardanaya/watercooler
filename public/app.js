@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // State
-let config = { user: '', mailbox: '' };
+let config = { user: '', mailbox: '', avatar: null };
 let messages = []; // Messages TO user (for main panel)
 let allMessages = []; // All messages involving user (for house dialogs)
 let recipients = [];
+let avatarStates = {}; // Map of name -> {tool_name, timestamp}
 let scene, camera, renderer, controls;
 let agentMeshes = new Map();
 let connectionLines = [];
@@ -137,7 +138,7 @@ function createTrees() {
     }
 }
 
-function createAgentHouse(name, position) {
+function createAgentHouse(name, position, toolName = null) {
     const color = getAgentColor(name);
     const group = new THREE.Group();
     group.position.copy(position);
@@ -183,30 +184,42 @@ function createAgentHouse(name, position) {
     window2.position.set(1.8, 2.5, 3.1);
     group.add(window2);
     
-    // Name label sprite
+    // Name label sprite (with optional tool name)
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
     // High DPI canvas for crisp text
     const scale = 2;
     canvas.width = 512;
-    canvas.height = 128;
+    canvas.height = toolName ? 160 : 128; // Taller if showing tool
     context.scale(scale, scale);
+    
+    // Background
     context.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    context.roundRect(0, 0, 256, 64, 16);
+    context.roundRect(0, 0, 256, toolName ? 80 : 64, 16);
     context.fill();
+    
+    // Name text
     context.font = 'bold 24px Arial';
     context.fillStyle = 'white';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText(name, 128, 32);
+    context.fillText(name, 128, 24);
+    
+    // Tool name text (if available)
+    if (toolName) {
+        context.font = 'italic 16px Arial';
+        context.fillStyle = '#FFD700'; // Gold color for tool name
+        context.fillText(toolName, 128, 56);
+    }
     
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     const spriteMat = new THREE.SpriteMaterial({ map: texture });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.position.set(0, 8, 0);
-    sprite.scale.set(8, 2, 1);
+    sprite.position.set(0, toolName ? 8.5 : 8, 0);
+    sprite.scale.set(8, toolName ? 2.5 : 2, 1);
+    sprite.name = 'label'; // Tag for easy updates
     group.add(sprite);
     
     // Path to house
@@ -221,6 +234,49 @@ function createAgentHouse(name, position) {
     agentMeshes.set(name, group);
     
     return group;
+}
+
+function updateHouseLabel(house, name, toolName = null) {
+    const sprite = house.getObjectByName('label');
+    if (!sprite) return;
+    
+    // Create new canvas with updated text
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const scale = 2;
+    canvas.width = 512;
+    canvas.height = toolName ? 160 : 128;
+    context.scale(scale, scale);
+    
+    // Background
+    context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    context.roundRect(0, 0, 256, toolName ? 80 : 64, 16);
+    context.fill();
+    
+    // Name text
+    context.font = 'bold 24px Arial';
+    context.fillStyle = 'white';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(name, 128, 24);
+    
+    // Tool name text (if available)
+    if (toolName) {
+        context.font = 'italic 16px Arial';
+        context.fillStyle = '#FFD700';
+        context.fillText(toolName, 128, 56);
+    }
+    
+    // Update texture
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    sprite.material.map = texture;
+    sprite.material.needsUpdate = true;
+    
+    // Update position and scale
+    sprite.position.set(0, toolName ? 8.5 : 8, 0);
+    sprite.scale.set(8, toolName ? 2.5 : 2, 1);
 }
 
 function createMessageParticle(fromPos, toPos) {
@@ -340,12 +396,44 @@ function updateVillage() {
         const z = Math.sin(angle) * radius;
         const position = new THREE.Vector3(x, 0, z);
         
+        // Get tool name for this agent from avatar states
+        const avatarState = avatarStates[agent.toLowerCase()];
+        const toolName = avatarState?.tool_name || null;
+        
         if (!agentMeshes.has(agent)) {
-            createAgentHouse(agent, position);
+            createAgentHouse(agent, position, toolName);
         } else {
             // Update position if needed
             const house = agentMeshes.get(agent);
             house.position.copy(position);
+            
+            // Update label with current tool name
+            updateHouseLabel(house, agent, toolName);
+        }
+    });
+    
+    // Remove houses for coworkers that no longer exist
+    agentMeshes.forEach((house, name) => {
+        if (!allAgents.has(name)) {
+            // Remove from scene
+            scene.remove(house);
+            
+            // Dispose of geometries and materials to prevent memory leaks
+            house.traverse((child) => {
+                if (child.isMesh) {
+                    child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(m => m.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                }
+            });
+            
+            // Remove from Map
+            agentMeshes.delete(name);
         }
     });
     
@@ -409,6 +497,17 @@ async function loadData() {
         messages = Array.isArray(messagesData) ? messagesData : [];
         recipients = Array.isArray(recipientsData) ? recipientsData : [];
         allMessages = Array.isArray(allMessagesData) ? allMessagesData : [];
+        
+        // Load avatar states if avatar DB is configured
+        if (config.avatar) {
+            try {
+                const avatarsRes = await fetch('/api/avatars');
+                avatarStates = await avatarsRes.json();
+            } catch (err) {
+                console.error('Error loading avatar states:', err);
+                avatarStates = {};
+            }
+        }
         
         updateUI();
         updateVillage();
@@ -524,6 +623,18 @@ async function markAsRead(id) {
         console.error('Error marking as read:', err);
     }
 }
+
+window.markAllAsRead = async function() {
+    const unreadMessages = messages.filter(m => !m.read && m.recipient.toLowerCase() === config.user.toLowerCase());
+    if (unreadMessages.length === 0) return;
+    
+    try {
+        await Promise.all(unreadMessages.map(m => fetch(`/api/messages/${m.id}/read`, { method: 'POST' })));
+        loadData();
+    } catch (err) {
+        console.error('Error marking all as read:', err);
+    }
+};
 
 async function sendMessage() {
     const to = document.getElementById('recipient-select').value;
@@ -736,7 +847,7 @@ window.closeHouseDialog = function() {
     document.getElementById('house-dialog').classList.remove('active');
 };
 
-// Update house labels to show unread indicators
+// Update house labels to show unread indicators and tool names
 function updateHouseLabels() {
     agentMeshes.forEach((group, name) => {
         // Check for unread messages SENT TO this agent (messages they haven't read)
@@ -753,6 +864,10 @@ function updateHouseLabels() {
             !m.read
         ).length;
         
+        // Get tool name for this agent
+        const avatarState = avatarStates[name.toLowerCase()];
+        const toolName = avatarState?.tool_name || null;
+        
         // Find the sprite label
         const sprite = group.children.find(c => c.isSprite);
         if (sprite) {
@@ -761,7 +876,7 @@ function updateHouseLabels() {
             const context = canvas.getContext('2d');
             const scale = 2;
             canvas.width = 700;
-            canvas.height = 128;
+            canvas.height = toolName ? 160 : 128;
             context.scale(scale, scale);
             
             // Background - change color if there are unread messages
@@ -775,7 +890,7 @@ function updateHouseLabels() {
                 // Default black background
                 context.fillStyle = 'rgba(0, 0, 0, 0.7)';
             }
-            context.roundRect(0, 0, 350, 64, 16);
+            context.roundRect(0, 0, 350, toolName ? 80 : 64, 16);
             context.fill();
             
             // Name
@@ -786,12 +901,19 @@ function updateHouseLabels() {
             
             if (unreadFromAgent > 0) {
                 // Show name with unread indicator from agent
-                context.fillText(`${name} 🔴 ${unreadFromAgent}`, 175, 32);
+                context.fillText(`${name} 🔴 ${unreadFromAgent}`, 175, 24);
             } else if (unreadCount > 0) {
                 // Show name with sent-but-unread count
-                context.fillText(`${name} 📤 ${unreadCount}`, 175, 32);
+                context.fillText(`${name} 📤 ${unreadCount}`, 175, 24);
             } else {
-                context.fillText(name, 175, 32);
+                context.fillText(name, 175, 24);
+            }
+            
+            // Tool name text (if available)
+            if (toolName) {
+                context.font = 'italic 16px Arial';
+                context.fillStyle = '#FFD700'; // Gold color for tool name
+                context.fillText(toolName, 175, 56);
             }
             
             const texture = new THREE.CanvasTexture(canvas);
@@ -799,6 +921,10 @@ function updateHouseLabels() {
             texture.magFilter = THREE.LinearFilter;
             sprite.material.map = texture;
             sprite.material.needsUpdate = true;
+            
+            // Update position and scale based on whether tool name is shown
+            sprite.position.set(0, toolName ? 8.5 : 8, 0);
+            sprite.scale.set(8, toolName ? 2.5 : 2, 1);
         }
     });
 }

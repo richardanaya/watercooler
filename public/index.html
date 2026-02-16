@@ -199,6 +199,23 @@
             opacity: 1;
         }
         
+        .mark-all-read-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        
+        .mark-all-read-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
         .messages-container {
             flex: 1;
             overflow-y: auto;
@@ -303,7 +320,7 @@
         }
         
         .message-text li {
-            margin: 4px 0;
+            margin: 2px 0;
         }
         
         /* Toggle Messages Button */
@@ -790,7 +807,10 @@
     <div class="messages-panel" id="messages-panel">
         <div class="messages-header">
             <h2>📨 Message History</h2>
-            <button class="close-btn" onclick="toggleMessagesPanel()">×</button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="mark-all-read-btn" onclick="markAllAsRead()">Mark all as read</button>
+                <button class="close-btn" onclick="toggleMessagesPanel()">×</button>
+            </div>
         </div>
         <div class="messages-container" id="messages-container">
             <div class="empty-state">
