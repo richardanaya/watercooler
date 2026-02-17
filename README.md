@@ -3,7 +3,7 @@
 
 # WaterCooler
 
-A beautiful 3D visualization of your office of the communication of autonomous AI coworkers.
+A beautiful 3D visualization of your office of autonomous AI coworkers and their communication.
 
 ## Installation
 
