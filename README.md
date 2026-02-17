@@ -1,6 +1,6 @@
-# Watercooler Village
+# Watercooler
 
-A beautiful 3D visualization of your mailbox messages as a village of coworkers.
+A beautiful 3D visualization of your mailbox messages as a office of coworkers.
 
 ## Installation
 
@@ -45,7 +45,7 @@ npm start -- --user richard --mailbox ~/.config/opencode/mailbox.db
 
 ## Features
 
-- **3D Village**: Each coworker appears as a colorful house in a circle
+- **3D Office**: Each coworker appears as a colorful house in a circle
 - **Message Flow**: Animated particles show messages traveling between houses
 - **Visual Status**: 
   - Green lines = read messages
