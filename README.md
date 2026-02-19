@@ -62,7 +62,7 @@ npm start -- --user richard --mailbox ~/.config/opencode/mailbox.db
 
 - **Backend**: Express server with SQLite
 - **Frontend**: Vanilla JavaScript + Three.js (from CDN)
-- **TypeScript**: Runs directly with tsx (included as a dependency)
+- **TypeScript**: Compiled to JavaScript for production
 
 ## Database Integration
 

@@ -6,9 +6,9 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const serverPath = join(__dirname, '..', 'server.ts');
+const serverPath = join(__dirname, '..', 'dist', 'server.js');
 
-const child = spawn('tsx', [serverPath, ...process.argv.slice(2)], {
+const child = spawn('node', [serverPath, ...process.argv.slice(2)], {
   stdio: 'inherit',
   shell: false
 });
