@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/server.js",
   "bin": {
-    "watercooler": "./bin/watercooler.js"
+    "watercooler": "bin/watercooler.js"
   },
   "files": [
     "bin/",
