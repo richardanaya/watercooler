@@ -1,6 +1,6 @@
 {
   "name": "watercooler",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "A beautiful 3D visualization of your mailbox messages as a village of coworkers",
   "type": "module",
   "main": "dist/server.js",
